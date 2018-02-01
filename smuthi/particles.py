@@ -129,7 +129,7 @@ class Spheroid(Particle):
                 return True
             elif type(particle_prime).__name__ == 'Spheroid':
                 closest_point = self.spheroid_closest_surface_point(np.array(particle_prime.position))
-                if np.linalg.norm(closest_point - particle_prime.position) > particle_prime.circumscribing_sphere_radius():
+                if np.linalg.norm(closest_point - np.array(particle_prime.position)) > particle_prime.circumscribing_sphere_radius():
                     return False
                 else:
                     return True
@@ -137,7 +137,7 @@ class Spheroid(Particle):
                 raise ValueError('For finite cylinders the circumscribing sphere routine is not implemented yet.')
                 
     
-    def spheroid_quadric_matrix(self):
+    def spheroid_quadric_matrix(self, add_rot=False):
         """
         Computation of the (3x3)-matrix E, that represents a spheroid.
         The eigenvalues of this matrix are determined by the spheroid's semi-axis.
@@ -150,8 +150,11 @@ class Spheroid(Particle):
                                  [np.sin(ang[0]) * np.cos(ang[1]), np.cos(ang[0]), np.sin(ang[0]) * np.sin(ang[1])],
                                  [-np.sin(ang[1]), 0, np.cos(ang[1])]]))
             return rot_mat
-    
-        rot_matrix = rotation_matrix(self.euler_angles)
+        
+        if add_rot:
+            rot_matrix =  rotation_matrix(np.array(self.euler_angles) - np.array(add_rot))
+        else:
+            rot_matrix = rotation_matrix(self.euler_angles)
         eigenvalue_matrix = np.array([[1 / self.semi_axis_a ** 2, 0, 0], [0, 1 / self.semi_axis_a ** 2, 0], [0, 0, 1 / self.semi_axis_c ** 2]])
         E = np.dot(rot_matrix, np.dot(eigenvalue_matrix, np.transpose(rot_matrix)))
         return E
@@ -200,6 +203,44 @@ class Spheroid(Particle):
                 print('No minimum found ...')
         return p1
     
+    
+    def spheroid_highest_lowest_surface_points(self, add_rot=False):
+        """
+        Computation of a spheroids surface points with the highest / lowest z-value
+    
+        Args:
+            ab_halfaxis1 (float):        Half axis orthogonal to symmetry axis of the spheroid 
+            c_halfaxis1 (float):         Half axis parallel to symmetry axis of the spheroid 
+            center (numpy.array):        Center coordinates of the spheroid 
+            orientation (numpy.array):   Orientation angles of the spheroid
+        
+        Retruns:
+            Tuple containing:
+                - surface point with the highest z-value (numpy.array)
+                - surface point with the lowest z-value (numpy.array)
+        """
+        
+        E = self.spheroid_quadric_matrix(add_rot)
+        L = np.linalg.cholesky(E)
+        L_inv_trans = np.linalg.inv(np.transpose(L))
+    
+        lambd = 0.5 * ((L_inv_trans[2,0]**2 + L_inv_trans[2,1]**2 + L_inv_trans[2,2]**2) ** 0.5)
+    
+        y = np.zeros([3,1], dtype=float)
+        y[0], y[1], y[2] = L_inv_trans[2,0] / (2 * lambd), L_inv_trans[2,1] / (2 * lambd), L_inv_trans[2,2] / (2 * lambd)
+    
+        r_highz = np.zeros(3, dtype=float)
+        r_lowz = np.zeros(3, dtype=float)
+        r_highz[0] = L_inv_trans[0,0] * y[0] + L_inv_trans[0,1] * y[1] + L_inv_trans[0,2] * y[2] + self.position[0]
+        r_highz[1] = L_inv_trans[1,0] * y[0] + L_inv_trans[1,1] * y[1] + L_inv_trans[1,2] * y[2] + self.position[1]
+        r_highz[2] = L_inv_trans[2,0] * y[0] + L_inv_trans[2,1] * y[1] + L_inv_trans[2,2] * y[2] + self.position[2]
+    
+  
+        r_lowz[0] = L_inv_trans[0,0] * -y[0] + L_inv_trans[0,1] * -y[1] + L_inv_trans[0,2] * -y[2] + self.position[0]
+        r_lowz[1] = L_inv_trans[1,0] * -y[0] + L_inv_trans[1,1] * -y[1] + L_inv_trans[1,2] * -y[2] + self.position[1]
+        r_lowz[2] = L_inv_trans[2,0] * -y[0] + L_inv_trans[2,1] * -y[1] + L_inv_trans[2,2] * -y[2] + self.position[2]
+    
+        return r_highz, r_lowz
     
 
 class FiniteCylinder(Particle):
