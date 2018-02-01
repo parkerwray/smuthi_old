@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Provide class for the representation of scattering particles."""
 import numpy as np
+import collections
 
 
 class Particle:
@@ -41,6 +42,12 @@ class Particle:
         """Virtual method to be overwritten"""
         pass
 
+    def circumscribing_sphere_intersection(self, particle_prime):
+        """
+        Check, whether the particle's circumscribing sphere intersects another particle's circumscribing sphere.
+        """
+        distance = np.linalg.norm(self.position - particle_prime.position)
+        if distance <= self.circumscribing_sphere_radius(self) + particle_prime.circumscribing_sphere_radius(particle_prime):        
 
 class Sphere(Particle):
     """Particle subclass for spheres.
@@ -143,3 +150,12 @@ class FiniteCylinder(Particle):
     def circumscribing_sphere_radius(self):
         return np.sqrt((self.cylinder_height / 2)**2 + self.cylinder_radius**2)
 
+
+class ParticleList(collections.UserList):
+    """A class to handle particle collections. Besides holding a list of particles object, methods to check particle
+     intersection are provided.
+     """
+    def __init__(self, lst=None):
+        if lst is None:
+            lst = []
+        collections.UserList.__init__(self, lst)
