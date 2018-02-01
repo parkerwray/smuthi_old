@@ -2,6 +2,7 @@
 """Provide class for the representation of scattering particles."""
 import numpy as np
 import collections
+import scipy
 
 
 class Particle:
@@ -43,11 +44,8 @@ class Particle:
         pass
 
     def circumscribing_sphere_intersection(self, particle_prime):
-        """
-        Check, whether the particle's circumscribing sphere intersects another particle's circumscribing sphere.
-        """
-        distance = np.linalg.norm(self.position - particle_prime.position)
-        if distance <= self.circumscribing_sphere_radius(self) + particle_prime.circumscribing_sphere_radius(particle_prime):        
+        """Virtual method to be overwritten"""
+        pass    
 
 class Sphere(Particle):
     """Particle subclass for spheres.
@@ -71,6 +69,16 @@ class Sphere(Particle):
     def circumscribing_sphere_radius(self):
         return self.radius
 
+    def circumscribing_sphere_intersection(self, particle_prime):
+        """Check, whether the particle intersects another particle's circumscribing sphere."""
+        distance = np.linalg.norm(np.array(self.position) - np.array(particle_prime.position))
+        if distance > self.circumscribing_sphere_radius() + particle_prime.circumscribing_sphere_radius():
+            return False
+        else:
+            if type(particle_prime).__name__ == 'Sphere':
+                raise ValueError('Spheres' + self + 'and' + particle_prime + 'intersect')
+            else:
+                return True
 
 class Spheroid(Particle):
     """Particle subclass for spheroids.
@@ -111,6 +119,88 @@ class Spheroid(Particle):
     def circumscribing_sphere_radius(self):
         return max([self.semi_axis_a, self.semi_axis_c])
 
+    def circumscribing_sphere_intersection(self, particle_prime):
+        """Check, whether the particle intersects another particle's circumscribing sphere."""
+        distance = np.linalg.norm(np.array(self.position) - np.array(particle_prime.position))
+        if distance > self.circumscribing_sphere_radius() + particle_prime.circumscribing_sphere_radius():
+            return False
+        else:
+            if type(particle_prime).__name__ == 'Sphere':
+                return True
+            elif type(particle_prime).__name__ == 'Spheroid':
+                closest_point = self.spheroid_closest_surface_point(np.array(particle_prime.position))
+                if np.linalg.norm(closest_point - particle_prime.position) > particle_prime.circumscribing_sphere_radius():
+                    return False
+                else:
+                    return True
+            elif type(particle_prime).__name__ == 'FiniteCylinder':
+                raise ValueError('For finite cylinders the circumscribing sphere routine is not implemented yet.')
+                
+    
+    def spheroid_quadric_matrix(self):
+        """
+        Computation of the (3x3)-matrix E, that represents a spheroid.
+        The eigenvalues of this matrix are determined by the spheroid's semi-axis.
+        The eigenvectors of this matrix are determined by the spheroid's orientation.
+        Returns:
+            E(numpy.array):      (3x3)-matrix. Complete description of a spheroid.
+        """
+        def rotation_matrix(ang):
+            rot_mat = (np.array([[np.cos(ang[0]) * np.cos(ang[1]), -np.sin(ang[0]), np.cos(ang[0]) * np.sin(ang[1])],
+                                 [np.sin(ang[0]) * np.cos(ang[1]), np.cos(ang[0]), np.sin(ang[0]) * np.sin(ang[1])],
+                                 [-np.sin(ang[1]), 0, np.cos(ang[1])]]))
+            return rot_mat
+    
+        rot_matrix = rotation_matrix(self.euler_angles)
+        eigenvalue_matrix = np.array([[1 / self.semi_axis_a ** 2, 0, 0], [0, 1 / self.semi_axis_a ** 2, 0], [0, 0, 1 / self.semi_axis_c ** 2]])
+        E = np.dot(rot_matrix, np.dot(eigenvalue_matrix, np.transpose(rot_matrix)))
+        return E
+    
+       
+    def spheroid_closest_surface_point(self, coordinate):
+        """
+        Computation of a spheroids surface point, that is closest to a given reference coordinate   
+        Args:
+            An smuthi.spheroid-Object
+            coordinate (numpy.array):    Reference point        
+        Retruns:
+                - surface point closest to the reference coordinate (numpy.array)
+        """     
+        position = np.array(self.position)
+        E = self.spheroid_quadric_matrix()
+        L = np.linalg.cholesky(E)   
+        S = np.matrix.getH(L)
+        if np.round(np.linalg.norm(-(np.dot(S, (position - coordinate)))), 5) <= 1:
+            raise ValueError('The given point is located inside the spheroid')
+    
+        H = np.dot(np.linalg.inv(L), np.transpose(np.linalg.inv(L)))
+        f = np.dot(np.transpose(position - coordinate), np.transpose(np.linalg.inv(L)))
+            
+        def minimization_fun(y_vec):
+            fun = 0.5 * np.dot(np.dot(np.transpose(y_vec), H), y_vec) + np.dot(f, y_vec)
+            return fun
+        def constraint_fun(x):
+            eq_constraint = (x[0] ** 2 + x[1] ** 2 + x[2] ** 2) ** 0.5 - 1
+            return eq_constraint
+        bnds = ((-1, 1), (-1, 1), (-1, 1))
+        length_constraints = {'type' : 'eq', 'fun' : constraint_fun}
+       
+        flag = False
+        while flag == False:
+            x0 = -1 + np.dot((1 + 1), np.random.rand(3))
+            optimization_result = scipy.optimize.minimize(minimization_fun, x0, method='SLSQP', bounds=bnds,
+                                                          constraints=length_constraints, tol=None, callback=None, options=None)
+            p1 = np.transpose(np.dot(np.transpose(np.linalg.inv(L)), optimization_result['x']) + np.transpose(position))
+            if optimization_result['success'] == True:
+                if np.linalg.norm(p1 - coordinate) < np.linalg.norm(position - coordinate):
+                    flag = True
+                else:
+                    print('wrong minimum ...')
+            else:
+                print('No minimum found ...')
+        return p1
+    
+    
 
 class FiniteCylinder(Particle):
     """Particle subclass for finite cylinders.
@@ -150,6 +240,16 @@ class FiniteCylinder(Particle):
     def circumscribing_sphere_radius(self):
         return np.sqrt((self.cylinder_height / 2)**2 + self.cylinder_radius**2)
 
+    def circumscribing_sphere_intersection(self, particle_prime):
+        """Check, whether the particle intersects another particle's circumscribing sphere."""
+        distance = np.linalg.norm(np.array(self.position) - np.array(particle_prime.position))
+        if distance > self.circumscribing_sphere_radius() + particle_prime.circumscribing_sphere_radius():
+            return False
+        else:
+            if type(particle_prime).__name__ == 'Sphere':
+                return True
+            else:
+                raise ValueError('For finite cylinders the circumscribing sphere routine is not implemented yet.')
 
 class ParticleList(collections.UserList):
     """A class to handle particle collections. Besides holding a list of particles object, methods to check particle
