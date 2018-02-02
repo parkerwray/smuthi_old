@@ -12,6 +12,7 @@ import smuthi.spherical_functions as sf
 import smuthi.field_expansion as fldex
 import smuthi.vector_wave_functions as vwf
 import smuthi.cuda_sources as cu
+import smuthi.particles as part
 import matplotlib.pyplot as plt
 import sys
 from tqdm import tqdm
@@ -736,21 +737,14 @@ def size_format(b):
         return '%.1f' % float(b/1000000000000) + 'TB'
 
 
-def spheroids_closest_points(ab_halfaxis1, c_halfaxis1, center1, orientation1, ab_halfaxis2, c_halfaxis2, center2, 
-                             orientation2):
+def spheroids_closest_points(spheroid_nr1, spheroid_nr2):
     """ Computation of the two closest points of two adjacent spheroids.
     For details, see: Stephen B. Pope, Algorithms for Ellipsoids, Sibley School of Mechanical & Aerospace Engineering, 
     Cornell University, Ithaca, New York, February 2008
     
     Args:
-        ab_halfaxis1 (float):        Half axis orthogonal to symmetry axis of spheroid 1
-        c_halfaxis1 (float):         Half axis parallel to symmetry axis of spheroid 1
-        center1 (numpy.array):       Center coordinates of spheroid 1
-        orientation1 (numpy.array):  Orientation angles of spheroid 1
-        ab_halfaxis2 (float):        Half axis orthogonal to symmetry axis of spheroid 2
-        c_halfaxis2 (float):         Half axis parallel to symmetry axis of spheroid 2
-        center2 (numpy.array):       Center coordinates of spheroid 2
-        orientation2 (numpy.array):  Orientation angles of spheroid 2
+        spheroid_nr1(smuthi.particle.Spheroid):      Smuthi Spheroid object.
+        spheroid_nr2(smuthi.particle.Spheroid):      Smuthi Spheroid object.
         
     Retruns:
         Tuple containing:
@@ -759,30 +753,15 @@ def spheroids_closest_points(ab_halfaxis1, c_halfaxis1, center1, orientation1, a
           - first rotation Euler angle alpha (float)
           - second rotation Euler angle beta (float)
     """
-    
-    def rotation_matrix(ang):
-        rot_mat = (np.array([[np.cos(ang[0]) * np.cos(ang[1]), -np.sin(ang[0]), np.cos(ang[0]) * np.sin(ang[1])],
-                             [np.sin(ang[0]) * np.cos(ang[1]), np.cos(ang[0]), np.sin(ang[0]) * np.sin(ang[1])],
-                             [-np.sin(ang[1]), 0, np.cos(ang[1])]]))
-        return rot_mat
-    
-    rot_matrix_1 = rotation_matrix(orientation1)
-    rot_matrix_2 = rotation_matrix(orientation2)
-        
-    a1, a2 = ab_halfaxis1, ab_halfaxis2
-    c1, c2 = c_halfaxis1, c_halfaxis2
-    ctr1, ctr2 = np.array(center1), np.array(center2)
-    
-    eigenvalue_matrix_1 = np.array([[1 / a1 ** 2, 0, 0], [0, 1 / a1 ** 2, 0], [0, 0, 1 / c1 ** 2]])
-    eigenvalue_matrix_2 = np.array([[1 / a2 ** 2, 0, 0], [0, 1 / a2 ** 2, 0], [0, 0, 1 / c2 ** 2]])
-    
-    E1 = np.dot(rot_matrix_1, np.dot(eigenvalue_matrix_1, np.transpose(rot_matrix_1)))
-    E2 = np.dot(rot_matrix_2, np.dot(eigenvalue_matrix_2, np.transpose(rot_matrix_2)))
+       
+    E1 = spheroid_nr1.spheroid_quadric_matrix()
+    E2 = spheroid_nr2.spheroid_quadric_matrix()
     S = np.matrix.getH(np.linalg.cholesky(E1))
     
     # transformation of spheroid E1 into the unit-sphere with its center at origin / same transformation on E2
     # E1_prime = np.dot(np.transpose(np.linalg.inv(S)), np.dot(E1, np.linalg.inv(S)))
     # ctr1_prime = ctr1 - ctr1 
+    ctr1, ctr2 = np.array(spheroid_nr1.position), np.array(spheroid_nr2.position)
     E2_prime = np.dot(np.transpose(np.linalg.inv(S)), np.dot(E2, np.linalg.inv(S)))
     ctr2_prime = -(np.dot(S, (ctr1 - ctr2)))  
     E2_prime_L = np.linalg.cholesky(E2_prime)
@@ -872,6 +851,8 @@ def direct_coupling_block_pvwf_mediated(vacuum_wavelength, receiving_particle, e
     """    
     if type(receiving_particle).__name__ != 'Spheroid' or type(emitting_particle).__name__ != 'Spheroid':
         raise NotImplementedError('plane wave coupling currently implemented only for spheroids')
+    if type(k_parallel) == str and k_parallel == 'default':
+        k_parallel = coord.default_k_parallel
     
     lmax1 = receiving_particle.l_max
     mmax1 = receiving_particle.m_max
@@ -885,10 +866,7 @@ def direct_coupling_block_pvwf_mediated(vacuum_wavelength, receiving_particle, e
     n_medium = layer_system.refractive_indices[layer_system.layer_number(receiving_particle.position[2])]
       
     # finding the orientation of a plane separating the spheroids
-    _, _, alpha, beta = spheroids_closest_points(
-        emitting_particle.semi_axis_a, emitting_particle.semi_axis_c, emitting_particle.position, 
-        emitting_particle.euler_angles, receiving_particle.semi_axis_a, receiving_particle.semi_axis_c,
-        receiving_particle.position, receiving_particle.euler_angles)
+    _, _, alpha, beta = spheroids_closest_points(emitting_particle, receiving_particle)
     
     # positions
     r1 = np.array(receiving_particle.position)

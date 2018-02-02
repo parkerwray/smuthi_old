@@ -283,10 +283,17 @@ class CouplingMatrixExplicit(SystemMatrix):
             idx1 = np.array(self.index_block(s1))[:, None]
             for s2, particle2 in enumerate(particle_list):
                 idx2 = self.index_block(s2)
-                coup_mat[idx1, idx2] = (coup.layer_mediated_coupling_block(vacuum_wavelength, particle1, particle2,
-                                                                           layer_system, k_parallel)
-                                        + coup.direct_coupling_block(vacuum_wavelength, particle1, particle2,
-                                                                     layer_system))
+                if not particle1 == particle2:
+                    if not particle2.circumscribing_sphere_intersection(particle1):
+                        coup_mat[idx1, idx2] = (coup.layer_mediated_coupling_block(vacuum_wavelength, particle1, particle2,
+                                                                                   layer_system, k_parallel)
+                                                + coup.direct_coupling_block(vacuum_wavelength, particle1, particle2,
+                                                                             layer_system))
+                    else:
+                        coup_mat[idx1, idx2] = (coup.layer_mediated_coupling_block(vacuum_wavelength, particle1, particle2,
+                                                                                   layer_system, k_parallel)
+                                                + coup.direct_coupling_block_pvwf_mediated(vacuum_wavelength, particle1, particle2,
+                                                                                           layer_system, k_parallel)) 
         self.linear_operator = scipy.sparse.linalg.aslinearoperator(coup_mat)
       
         
