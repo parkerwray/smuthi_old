@@ -84,7 +84,7 @@ def t_matrix(vacuum_wavelength, n_medium, particle):
                                     particle_refractive_index=particle.refractive_index,
                                     semi_axis_c=particle.semi_axis_c, semi_axis_a=particle.semi_axis_a,
                                     use_ds=particle.t_matrix_method.get('use discrete sources', True),
-                                    nint=particle.t_matrix_method.get('nint', 200),
+                                    nint=particle.t_matrix_method.get('nint', 400),
                                     nrank=particle.t_matrix_method.get('nrank', particle.l_max + 2),
                                     l_max=particle.l_max, m_max=particle.m_max)
         if not particle.euler_angles == [0, 0, 0]:

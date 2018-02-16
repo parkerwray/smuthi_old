@@ -3,6 +3,7 @@
 import numpy as np
 import collections
 import scipy
+import smuthi.coordinates as coord
 
 
 class Particle:
@@ -128,7 +129,7 @@ class Spheroid(Particle):
             if type(particle_prime).__name__ == 'Sphere':
                 return True
             elif type(particle_prime).__name__ == 'Spheroid':
-                closest_point = self.spheroid_closest_surface_point(np.array(particle_prime.position))
+                closest_point, _, _ = self.spheroid_closest_surface_point(np.array(particle_prime.position))
                 if np.linalg.norm(closest_point - np.array(particle_prime.position)) > particle_prime.circumscribing_sphere_radius():
                     return False
                 else:
@@ -142,21 +143,28 @@ class Spheroid(Particle):
         Computation of the (3x3)-matrix E, that represents a spheroid.
         The eigenvalues of this matrix are determined by the spheroid's semi-axis.
         The eigenvectors of this matrix are determined by the spheroid's orientation.
+        Args:
+            add_rot(list):       Add a rotation to the spheroid. List contains the euler angles of rotation [alpha, beta, gamme] in radians.
         Returns:
             E(numpy.array):      (3x3)-matrix. Complete description of a spheroid.
         """
-        def rotation_matrix(ang):
-            rot_mat = (np.array([[np.cos(ang[0]) * np.cos(ang[1]), -np.sin(ang[0]), np.cos(ang[0]) * np.sin(ang[1])],
-                                 [np.sin(ang[0]) * np.cos(ang[1]), np.cos(ang[0]), np.sin(ang[0]) * np.sin(ang[1])],
-                                 [-np.sin(ang[1]), 0, np.cos(ang[1])]]))
-            return rot_mat
-        
-        if add_rot:
-            rot_matrix =  rotation_matrix(np.array(self.euler_angles) - np.array(add_rot))
-        else:
-            rot_matrix = rotation_matrix(self.euler_angles)
+       
+#        if not type(add_rot) == bool :
+#            rot_matrix =  coord.rotation_matrix(euler_angles=np.array(self.euler_angles) + np.array(add_rot))
+#        else:
+#            rot_matrix = coord.rotation_matrix(euler_angles=self.euler_angles)
+#            
+#        eigenvalue_matrix = np.array([[1 / self.semi_axis_a ** 2, 0, 0], [0, 1 / self.semi_axis_a ** 2, 0], [0, 0, 1 / self.semi_axis_c ** 2]])
+#        E = np.dot(np.transpose(rot_matrix), np.dot(eigenvalue_matrix, rot_matrix))
+
         eigenvalue_matrix = np.array([[1 / self.semi_axis_a ** 2, 0, 0], [0, 1 / self.semi_axis_a ** 2, 0], [0, 0, 1 / self.semi_axis_c ** 2]])
-        E = np.dot(rot_matrix, np.dot(eigenvalue_matrix, np.transpose(rot_matrix)))
+        rot_matrix = coord.rotation_matrix(euler_angles=self.euler_angles)
+        E = np.dot(np.transpose(rot_matrix), np.dot(eigenvalue_matrix, rot_matrix))        
+
+        if not type(add_rot) == bool:
+            rot_matrix2 = coord.rotation_matrix(euler_angles=add_rot)
+            E = np.dot(np.linalg.inv(np.transpose(rot_matrix2)), np.dot(E, np.linalg.inv(rot_matrix2)))
+#            E = np.dot(np.transpose(rot_matrix2), np.dot(E, rot_matrix2))
         return E
     
        
@@ -168,6 +176,10 @@ class Spheroid(Particle):
             coordinate (numpy.array):    Reference point        
         Retruns:
                 - surface point closest to the reference coordinate (numpy.array)
+                Additionally returns two Euler angles of rotation, that allow to rotated the vector (coordinate - surfacepoint) into a
+                vector parallel to the z-axis
+                - first rotation Euler angle alpha (float)
+                - second rotation Euler angle beta (float)
         """     
         position = np.array(self.position)
         E = self.spheroid_quadric_matrix()
@@ -197,11 +209,21 @@ class Spheroid(Particle):
             if optimization_result['success'] == True:
                 if np.linalg.norm(p1 - coordinate) < np.linalg.norm(position - coordinate):
                     flag = True
-                else:
-                    print('wrong minimum ...')
-            else:
-                print('No minimum found ...')
-        return p1
+#                else:
+#                    print('wrong minimum ...')
+#            else:
+#                print('No minimum found ...')
+                
+        p1p2 = coordinate - p1
+        azimuth = np.arctan2(p1p2[1], p1p2[0])
+        elevation = np.arctan2(p1p2[2], (p1p2[0] ** 2 + p1p2[1] ** 2) ** 0.5)
+
+        if p1p2[2] < 0:
+            beta = (np.pi / 2) + elevation
+        else:
+            beta = (-np.pi / 2) + elevation
+        alpha = -azimuth               
+        return p1, alpha, beta
     
     
     def spheroid_highest_lowest_surface_points(self, add_rot=False):
