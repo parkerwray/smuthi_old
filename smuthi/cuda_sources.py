@@ -11,7 +11,7 @@ try:
 except:
     pycuda_available = False
 
-use_gpu = False
+use_gpu = True # False
 
 default_blocksize = 128
 
